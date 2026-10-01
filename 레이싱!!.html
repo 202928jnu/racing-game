@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>레이싱!!</title>
+<style>
+:root{--bg:#bfe3ff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1a2b}}
+:root[data-theme="dark"]{--bg:#0e1a2b}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{height:100%;margin:0;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;font-family:"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif}
+#wrap{position:relative;width:min(100vw,56.25vh);width:min(100vw,56.25dvh);aspect-ratio:9/16;container-type:inline-size;border-radius:2cqw;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.3)}
+canvas{width:100%;height:100%;display:block}
+.ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3.5cqw;background:rgba(10,40,80,.6);color:#fff;text-align:center;padding:6cqw}
+.ov.hide{display:none}
+h1{margin:0;font-size:15cqw;text-shadow:0 .8cqw 0 #d62d20}
+h2{margin:0;font-size:12cqw;text-shadow:0 .8cqw 0 #d62d20}
+p{margin:0;font-size:4.6cqw;line-height:1.5}
+.big{font-size:9cqw;font-weight:800;color:#ffd93b}
+button{font:inherit;font-size:6.5cqw;font-weight:800;padding:2.5cqw 10cqw;border:0;border-radius:99cqw;background:#ff8a00;color:#fff;box-shadow:0 1.2cqw 0 #b85c00;cursor:pointer}
+button:active{transform:translateY(.8cqw);box-shadow:0 .4cqw 0 #b85c00}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="start" class="ov">
+    <div style="font-size:16cqw">🏁</div>
+    <h1>레이싱!!</h1>
+    <p>꼬깔콘을 피해 달리세요!<br>← → 방향키 / 화면 왼쪽·오른쪽 터치(클릭)로 이동</p>
+    <button id="startBtn">게임 시작</button>
+  </div>
+  <div id="over" class="ov hide">
+    <h2>게임 오버</h2>
+    <p>최종 점수</p>
+    <div class="big" id="finalScore">0</div>
+    <button id="retryBtn">다시 하기</button>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');
+const W=360,H=640,L=40,TW=280,LW=TW/3,CAR_Y=H-120;
+c.width=W*2;c.height=H*2;x.setTransform(2,0,0,2,0,0);
+const laneX=i=>L+LW*i+LW/2;
+let running=false,lane,carX,lives,score,t,dif,sec,combo,cones,spawnD,off,flash,toast,toastT,shake;
+const speed=()=>240+Math.floor(dif/10)*50;
+const fmt=n=>Math.floor(n).toLocaleString('ko-KR');
+function reset(){lane=1;carX=laneX(1);lives=3;score=0;t=0;dif=0;sec=0;combo=0;cones=[];spawnD=200;flash=0;toast='';toastT=0;shake=0}
+reset();off=0;
+function move(d){if(!running)return;lane=Math.max(0,Math.min(2,lane+d))}
+addEventListener('keydown',e=>{if(e.key==='ArrowLeft'){e.preventDefault();move(-1)}else if(e.key==='ArrowRight'){e.preventDefault();move(1)}});
+c.addEventListener('pointerdown',e=>{const r=c.getBoundingClientRect();move(e.clientX-r.left<r.width/2?-1:1)});
+function begin(){reset();running=true;document.getElementById('start').classList.add('hide');document.getElementById('over').classList.add('hide')}
+document.getElementById('startBtn').onclick=begin;
+document.getElementById('retryBtn').onclick=begin;
+function gameOver(){running=false;document.getElementById('finalScore').textContent=fmt(score)+'점';document.getElementById('over').classList.remove('hide')}
+function spawn(){
+  const free=Math.floor(Math.random()*3);
+  const others=[0,1,2].filter(i=>i!==free);
+  const dblChance=Math.min(.8,.2*Math.floor(dif/30)); // 30초마다 20%p 증가 (처음 30초는 0%)
+  if(Math.random()<dblChance)others.forEach(i=>cones.push({lane:i,y:-50}));
+  else cones.push({lane:others[Math.floor(Math.random()*2)],y:-50});
+}
+function update(dt){
+  t+=dt;dif+=dt;sec+=dt;
+  while(sec>=1){sec-=1;score+=100*Math.pow(2,Math.floor(t/10))}
+  combo+=dt;
+  if(combo>=60){combo-=60;score+=5000;toast='🎉 보너스 +5,000점!';toastT=1.8}
+  const v=speed();off+=v*dt;
+  spawnD-=v*dt;if(spawnD<=0){spawnD=250+Math.random()*120;spawn()}
+  carX+=(laneX(lane)-carX)*Math.min(1,dt*18);
+  for(const k of cones)k.y+=v*dt;
+  for(let i=cones.length-1;i>=0;i--){
+    const k=cones[i];
+    if(Math.abs(laneX(k.lane)-carX)<30&&Math.abs(k.y-CAR_Y)<48){
+      cones.splice(i,1);lives--;combo=0;dif=Math.max(0,dif-30);flash=.45;shake=.3;
+      if(lives<=0){gameOver();return}
+    }else if(k.y>H+60)cones.splice(i,1);
+  }
+  if(flash>0)flash-=dt;if(shake>0)shake-=dt;if(toastT>0)toastT-=dt;
+}
+function rr(a,b,w,h,r,col){x.fillStyle=col;x.beginPath();x.roundRect(a,b,w,h,r);x.fill()}
+function drawCar(cx,cy){
+  x.save();x.translate(cx,cy);
+  rr(-22,-24,10,18,3,'#222');rr(12,-24,10,18,3,'#222');rr(-22,16,10,18,3,'#222');rr(12,16,10,18,3,'#222');
+  rr(-20,-38,40,76,14,'#e5281d');
+  rr(-6,-38,12,76,3,'#fff');
+  rr(-14,-14,28,20,6,'#79c8ff');
+  rr(-24,30,48,8,3,'#b81c13');
+  x.fillStyle='#ffe66b';x.fillRect(-16,-38,8,4);x.fillRect(8,-38,8,4);
+  x.restore();
+}
+function drawCone(cx,cy){
+  x.save();x.translate(cx,cy);
+  x.fillStyle='rgba(0,0,0,.2)';x.beginPath();x.ellipse(3,26,22,8,0,0,7);x.fill();
+  rr(-20,18,40,9,3,'#333');
+  x.fillStyle='#ff6a00';x.beginPath();x.moveTo(0,-30);x.lineTo(17,20);x.lineTo(-17,20);x.closePath();x.fill();
+  x.fillStyle='#fff';x.beginPath();x.moveTo(-6,-10);x.lineTo(6,-10);x.lineTo(10,2);x.lineTo(-10,2);x.closePath();x.fill();
+  x.restore();
+}
+function draw(){
+  x.save();
+  if(shake>0)x.translate((Math.random()-.5)*8,(Math.random()-.5)*8);
+  // 잔디
+  x.fillStyle='#5cc84a';x.fillRect(-10,-10,W+20,H+20);
+  const o=off%120;
+  x.fillStyle='#69d355';for(let y=-120+o;y<H;y+=120)x.fillRect(-10,y,W+20,60);
+  // 나무
+  x.font='30px serif';x.textAlign='center';x.textBaseline='middle';
+  for(let y=-60+(off%180);y<H+40;y+=180){x.fillText('🌳',20,y);x.fillText('🌲',340,y+90)}
+  // 서킷
+  x.fillStyle='#4a4f57';x.fillRect(L,-10,TW,H+20);
+  const cs=(off%60);
+  for(let y=-60+cs,i=0;y<H+10;y+=30,i++){x.fillStyle=i%2?'#fff':'#e5281d';x.fillRect(L-8,y,8,30);x.fillRect(L+TW,y,8,30)}
+  x.fillStyle='#fff';
+  for(let n=1;n<3;n++)for(let y=-60+(off%60);y<H+10;y+=60)x.fillRect(L+LW*n-2,y,4,32);
+  for(const k of cones)drawCone(laneX(k.lane),k.y);
+  drawCar(carX,CAR_Y);
+  x.restore();
+  if(flash>0){x.fillStyle='rgba(255,0,0,'+(flash*1.0)+')';x.fillRect(0,0,W,H)}
+  // HUD
+  x.fillStyle='rgba(0,30,70,.55)';x.beginPath();x.roundRect(8,8,W-16,58,12);x.fill();
+  x.fillStyle='#fff';x.textBaseline='alphabetic';x.textAlign='left';
+  x.font='bold 22px sans-serif';x.fillText('점수 '+fmt(score),18,34);
+  x.font='13px sans-serif';
+  x.fillText('단계 '+(Math.floor(dif/10)+1)+'  ·  무사고 '+Math.floor(combo)+'초 (60초마다 +5,000)',18,56);
+  x.textAlign='right';x.font='20px serif';
+  x.fillText('❤️'.repeat(Math.max(lives,0))+'🖤'.repeat(3-Math.max(lives,0)),W-16,34);
+  if(toastT>0){
+    x.textAlign='center';x.font='bold 26px sans-serif';
+    x.lineWidth=5;x.strokeStyle='#d62d20';x.strokeText(toast,W/2,200);
+    x.fillStyle='#ffd93b';x.fillText(toast,W/2,200);
+  }
+}
+let last=performance.now();
+function loop(n){
+  const dt=Math.min(.05,(n-last)/1000);last=n;
+  if(running)update(dt);else off+=120*dt;
+  draw();requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
